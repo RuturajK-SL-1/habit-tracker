@@ -1,280 +1,196 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Habit Tracker</title>
-
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-</head>
-
-<body>
-<div id="root"></div>
-
+<!-- KEEP EVERYTHING SAME UNTIL HabitTracker STARTS -->
 <script type="text/babel">
 
 const { useState, useEffect } = React;
 
-/* ---------------- FIREBASE ---------------- */
-
-const firebaseConfig = {
-apiKey: "AIzaSyCiO4MgdfxerS2Lq34cuBF2NEvbqZFQQeY",
-authDomain: "habit-tracker-bf3df.firebaseapp.com",
-databaseURL: "https://habit-tracker-bf3df-default-rtdb.asia-southeast1.firebasedatabase.app",
-projectId: "habit-tracker-bf3df",
-storageBucket: "habit-tracker-bf3df.firebasestorage.app",
-messagingSenderId: "394165507920",
-appId: "1:394165507920:web:5b65baf44ec43dbae9be55"
-};
-
-let database = null;
-let useFirebase = false;
-
-try {
-if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-
-firebase.auth().signInAnonymously()
-.then(()=>{
-database = firebase.database();
-useFirebase = true;
-})
-.catch(()=>useFirebase=false);
-
-}catch{
-useFirebase=false;
-}
-
-/* ---------------- HELPERS ---------------- */
-
-const getDateString = (date) => {
-const d = new Date(date);
-return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-};
-
-const getStreakForDates = (habitId, dateList, completions) => {
-let current = 0;
-let best = 0;
-
-dateList.forEach(date=>{
-if(completions[`${habitId}:${date}`]){
-current++;
-if(current>best) best=current;
-}else{
-current=0;
-}
-});
-return {current,best};
-};
-
-/* ---------------- APP ---------------- */
-
 const HabitTracker = () => {
 
-const [user,setUser]=useState('');
-const [habits,setHabits]=useState([]);
-const [completions,setCompletions]=useState({});
-const [view,setView]=useState('weekly');
-const [showCharts,setShowCharts]=useState(false);
-const [currentDate,setCurrentDate]=useState(new Date());
+const [user, setUser] = useState('');
+const [habits, setHabits] = useState([]);
+const [completions, setCompletions] = useState({});
+const [newHabit, setNewHabit] = useState('');
+const [loading, setLoading] = useState(true);
+const [showAddHabit, setShowAddHabit] = useState(false);
+const [view, setView] = useState('weekly');
+const [currentDate, setCurrentDate] = useState(new Date());
 
-const users=['Rutu','Suku'];
+const users = ['Rutu','Suku'];
 
-/* ---------- LOAD DATA ---------- */
+useEffect(() => {
+ if(user) loadUserData();
+}, [user]);
 
-useEffect(()=>{
-if(user) loadData();
-},[user]);
+const loadUserData = async () => {
+ const habitsData = localStorage.getItem(`habits:${user}`);
+ const completionsData = localStorage.getItem(`completions:${user}`);
 
-const loadData = async ()=>{
-if(useFirebase){
-const h = await database.ref(`habits/${user}`).once('value');
-const c = await database.ref(`completions/${user}`).once('value');
-setHabits(h.val()||[]);
-setCompletions(c.val()||{});
-}else{
-setHabits(JSON.parse(localStorage.getItem(`habits:${user}`)||"[]"));
-setCompletions(JSON.parse(localStorage.getItem(`completions:${user}`)||"{}"));
-}
+ setHabits(habitsData ? JSON.parse(habitsData) : []);
+ setCompletions(completionsData ? JSON.parse(completionsData) : {});
+ setLoading(false);
 };
 
-const saveData = async (h,c)=>{
-if(useFirebase){
-await database.ref(`habits/${user}`).set(h);
-await database.ref(`completions/${user}`).set(c);
-}else{
-localStorage.setItem(`habits:${user}`,JSON.stringify(h));
-localStorage.setItem(`completions:${user}`,JSON.stringify(c));
-}
+const saveData = (h,c) => {
+ localStorage.setItem(`habits:${user}`, JSON.stringify(h));
+ localStorage.setItem(`completions:${user}`, JSON.stringify(c));
 };
 
-/* ---------- HABITS ---------- */
-
-const addHabit = ()=>{
-const name = prompt("Habit name?");
-if(!name) return;
-const updated=[...habits,{id:Date.now(),name}];
-setHabits(updated);
-saveData(updated,completions);
+const getDateString = (date) => {
+ const d = new Date(date);
+ const y = d.getFullYear();
+ const m = String(d.getMonth()+1).padStart(2,'0');
+ const da = String(d.getDate()).padStart(2,'0');
+ return `${y}-${m}-${da}`;
 };
 
-const deleteHabit = (id)=>{
-const habit=habits.find(h=>h.id===id);
-if(!confirm(`Delete "${habit.name}"?`)) return;
-
-const updated=habits.filter(h=>h.id!==id);
-let updatedComp={...completions};
-
-Object.keys(updatedComp).forEach(k=>{
-if(k.startsWith(`${id}:`)) delete updatedComp[k];
-});
-
-setHabits(updated);
-setCompletions(updatedComp);
-saveData(updated,updatedComp);
+const toggleCompletion = (habitId,date) => {
+ const key = `${habitId}:${date}`;
+ const updated = {...completions};
+ updated[key] ? delete updated[key] : updated[key]=true;
+ setCompletions(updated);
+ saveData(habits,updated);
 };
 
-const toggleCompletion = (id,date)=>{
-let updated={...completions};
-const key=`${id}:${date}`;
-updated[key] ? delete updated[key] : updated[key]=true;
-setCompletions(updated);
-saveData(habits,updated);
+const addHabit = () => {
+ if(!newHabit.trim()) return;
+ const updated = [...habits,{id:Date.now(),name:newHabit.trim()}];
+ setHabits(updated);
+ saveData(updated,completions);
+ setNewHabit('');
+ setShowAddHabit(false);
 };
 
-/* ---------- DATE LISTS ---------- */
+const deleteHabit = (habitId) => {
+ const habit = habits.find(h=>h.id===habitId);
+ if(!window.confirm(`Delete "${habit.name}"?\nThis will remove all history.`)) return;
 
-const getWeekDates = ()=>{
-const base=new Date(currentDate);
-const day=base.getDay();
-const mondayOffset=(day===0?-6:1)-day;
-const start=new Date(base);
-start.setDate(base.getDate()+mondayOffset);
+ const updatedHabits = habits.filter(h=>h.id!==habitId);
+ const updatedComp = {...completions};
 
-let list=[];
-for(let i=0;i<7;i++){
-const d=new Date(start);
-d.setDate(start.getDate()+i);
-list.push(getDateString(d));
-}
-return list;
+ Object.keys(updatedComp).forEach(k=>{
+   if(k.startsWith(`${habitId}:`)) delete updatedComp[k];
+ });
+
+ setHabits(updatedHabits);
+ setCompletions(updatedComp);
+ saveData(updatedHabits,updatedComp);
 };
 
-const getMonthDates = ()=>{
-const y=currentDate.getFullYear();
-const m=currentDate.getMonth();
-const days=new Date(y,m+1,0).getDate();
-let list=[];
-for(let i=1;i<=days;i++)
-list.push(getDateString(new Date(y,m,i)));
-return list;
+const getWeekDates = () => {
+ let dates=[];
+ let base=new Date(currentDate);
+ let day=base.getDay();
+ let mondayOffset=(day===0?-6:1)-day;
+ let start=new Date(base);
+ start.setDate(base.getDate()+mondayOffset);
+
+ for(let i=0;i<7;i++){
+   let d=new Date(start);
+   d.setDate(start.getDate()+i);
+   dates.push(getDateString(d));
+ }
+ return dates;
 };
 
-const getYearDates = ()=>{
-const y=currentDate.getFullYear();
-let list=[];
-for(let m=0;m<12;m++){
-const days=new Date(y,m+1,0).getDate();
-for(let d=1;d<=days;d++)
-list.push(getDateString(new Date(y,m,d)));
-}
-return list;
+const getMonthDates = () => {
+ let dates=[];
+ let y=currentDate.getFullYear();
+ let m=currentDate.getMonth();
+ let days=new Date(y,m+1,0).getDate();
+
+ for(let d=1;d<=days;d++){
+   dates.push(getDateString(new Date(y,m,d)));
+ }
+ return dates;
 };
 
-const getDateList = ()=>{
-if(view==='weekly') return getWeekDates();
-if(view==='monthly') return getMonthDates();
-return getYearDates();
+const getYearDates = () => {
+ let dates=[];
+ let y=currentDate.getFullYear();
+
+ for(let m=0;m<12;m++){
+   let days=new Date(y,m+1,0).getDate();
+   for(let d=1;d<=days;d++){
+     dates.push(getDateString(new Date(y,m,d)));
+   }
+ }
+ return dates;
 };
 
-/* ---------- CHART ---------- */
-
-const getChartData = (habitId)=>{
-return getDateList().map(date=>({
-date,
-completed: completions[`${habitId}:${date}`] || false
-}));
+const getDateRange = () => {
+ if(view==='weekly') return getWeekDates();
+ if(view==='monthly') return getMonthDates();
+ return getYearDates();
 };
 
-/* ---------- UI ---------- */
+const getStreak = (habitId,dateList) => {
+
+ let best=0;
+ let run=0;
+
+ dateList.forEach(d=>{
+   if(completions[`${habitId}:${d}`]){
+     run++;
+     if(run>best) best=run;
+   } else run=0;
+ });
+
+ let current=0;
+ for(let i=dateList.length-1;i>=0;i--){
+   if(completions[`${habitId}:${dateList[i]}`]) current++;
+   else break;
+ }
+
+ return {current,best};
+};
 
 if(!user){
-return (
-<div className="p-10">
-<h2>Select User</h2>
-{users.map(u=>(
-<button key={u} onClick={()=>setUser(u)}>{u}</button>
-))}
-</div>
-);
+ return(
+ <div className="p-8 text-center">
+   {users.map(u=>
+     <button key={u} onClick={()=>setUser(u)} className="bg-indigo-600 text-white px-6 py-3 m-2 rounded">
+       {u}
+     </button>
+   )}
+ </div>
+ );
 }
 
-return (
+if(loading) return <div>Loading...</div>;
+
+return(
 <div className="p-6">
 
-<div className="flex gap-3 mb-4">
-<button onClick={()=>setView('weekly')}>Weekly</button>
-<button onClick={()=>setView('monthly')}>Monthly</button>
-<button onClick={()=>setView('yearly')}>Yearly</button>
-<button onClick={addHabit}>+ Habit</button>
-<button onClick={()=>setShowCharts(!showCharts)}>Charts</button>
+<div className="flex gap-2 mb-4">
+ <button onClick={()=>setView('weekly')}>Weekly</button>
+ <button onClick={()=>setView('monthly')}>Monthly</button>
+ <button onClick={()=>setView('yearly')}>Yearly</button>
 </div>
 
-{habits.map(habit=>{
-const dateList=getDateList();
-const {current,best}=getStreakForDates(habit.id,dateList,completions);
+{habits.map(h=>{
+ const range=getDateRange();
+ const {current,best}=getStreak(h.id,range);
 
-return(
-<div key={habit.id} className="mb-6 border p-4">
+ return(
+ <div key={h.id} className="border p-4 mb-3 rounded">
 
-<div className="flex justify-between">
-<h3>{habit.name}</h3>
-<button onClick={()=>deleteHabit(habit.id)}>Delete</button>
-</div>
+ <div className="flex justify-between">
+   <h3>{h.name}</h3>
+   <button onClick={()=>deleteHabit(h.id)}>Delete</button>
+ </div>
 
-<div className="flex gap-4 text-sm mt-2">
-{current>0 && <span>🔥 {current}</span>}
-{best>0 && <span>⭐ {best}</span>}
-</div>
+ <div className="flex gap-4 text-sm">
+   {current>0 && <span>🔥 Current: {current}</span>}
+   {best>0 && <span>⭐ Best: {best}</span>}
+ </div>
 
-<div className="flex gap-1 mt-3">
-{dateList.map(d=>{
-const done=completions[`${habit.id}:${d}`];
-return(
-<button key={d}
-onClick={()=>toggleCompletion(habit.id,d)}
-className={`w-6 h-6 ${done?'bg-green-500':'bg-gray-200'}`}
-></button>
-);
-})}
-</div>
-
-{showCharts && (
-<div className="flex gap-1 mt-4">
-{getChartData(habit.id).map((d,i)=>(
-<div key={i}
-className={`w-2 h-10 ${d.completed?'bg-green-500':'bg-gray-200'}`}
-></div>
-))}
-</div>
-)}
-
-</div>
-);
+ </div>
+ );
 })}
 
 </div>
 );
 };
 
-ReactDOM.createRoot(document.getElementById('root')).render(<HabitTracker/>);
+ReactDOM.createRoot(document.getElementById("root")).render(<HabitTracker/>);
 
 </script>
-</body>
-</html>

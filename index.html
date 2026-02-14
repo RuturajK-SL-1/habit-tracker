@@ -133,8 +133,30 @@
             const [showCharts, setShowCharts] = useState(false);
             const [currentDate, setCurrentDate] = useState(new Date());
             const [syncing, setSyncing] = useState(false);
+            const [isUsingCloud, setIsUsingCloud] = useState(useFirebase);
 
             const users = ['Me', 'My Wife'];
+
+            const loadFromLocalStorage = (selectedUser) => {
+                const habitsData = localStorage.getItem(`habits:${selectedUser}`);
+                const completionsData = localStorage.getItem(`completions:${selectedUser}`);
+
+                setHabits(habitsData ? JSON.parse(habitsData) : []);
+                setCompletions(completionsData ? JSON.parse(completionsData) : {});
+            };
+
+            const saveToLocalStorage = (selectedUser, newHabits, newCompletions) => {
+                localStorage.setItem(`habits:${selectedUser}`, JSON.stringify(newHabits));
+                localStorage.setItem(`completions:${selectedUser}`, JSON.stringify(newCompletions));
+            };
+
+            const switchToLocalStorage = (error) => {
+                if (useFirebase) {
+                    console.warn('Firebase unavailable, switching to localStorage:', error);
+                }
+                useFirebase = false;
+                setIsUsingCloud(false);
+            };
 
             useEffect(() => {
                 if (user) {
@@ -150,21 +172,17 @@
                         // Load from Firebase
                         const habitsSnapshot = await database.ref(`habits/${user}`).once('value');
                         const completionsSnapshot = await database.ref(`completions/${user}`).once('value');
-                        
+
                         setHabits(habitsSnapshot.val() || []);
                         setCompletions(completionsSnapshot.val() || {});
+                        setIsUsingCloud(true);
                     } else {
-                        // Load from localStorage
-                        const habitsData = localStorage.getItem(`habits:${user}`);
-                        const completionsData = localStorage.getItem(`completions:${user}`);
-                        
-                        setHabits(habitsData ? JSON.parse(habitsData) : []);
-                        setCompletions(completionsData ? JSON.parse(completionsData) : {});
+                        loadFromLocalStorage(user);
                     }
                 } catch (error) {
-                    console.log('Error loading data:', error);
-                    setHabits([]);
-                    setCompletions({});
+                    console.log('Error loading from Firebase, falling back to localStorage:', error);
+                    switchToLocalStorage(error);
+                    loadFromLocalStorage(user);
                 }
                 setLoading(false);
                 setSyncing(false);
@@ -177,14 +195,14 @@
                         // Save to Firebase
                         await database.ref(`habits/${user}`).set(newHabits);
                         await database.ref(`completions/${user}`).set(newCompletions);
+                        setIsUsingCloud(true);
                     } else {
-                        // Save to localStorage
-                        localStorage.setItem(`habits:${user}`, JSON.stringify(newHabits));
-                        localStorage.setItem(`completions:${user}`, JSON.stringify(newCompletions));
+                        saveToLocalStorage(user, newHabits, newCompletions);
                     }
                 } catch (error) {
-                    console.error('Error saving data:', error);
-                    alert('Failed to save data. Please try again.');
+                    console.error('Error saving to Firebase, saving locally instead:', error);
+                    switchToLocalStorage(error);
+                    saveToLocalStorage(user, newHabits, newCompletions);
                 }
                 setSyncing(false);
             };
@@ -421,7 +439,7 @@
                                 <p className="text-gray-600">Select your profile to continue</p>
                                 <div className="mt-3 flex items-center justify-center gap-2 text-sm text-green-600">
                                     <Cloud />
-                                    <span>{useFirebase ? 'Cloud Synced - Shared storage' : 'Local Storage Only'}</span>
+                                    <span>{isUsingCloud ? 'Cloud Synced - Shared storage' : 'Local Storage Only'}</span>
                                 </div>
                             </div>
                             
@@ -468,7 +486,7 @@
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    {useFirebase && (
+                                    {isUsingCloud && (
                                         <button
                                             onClick={refreshData}
                                             className="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100"
